@@ -1,0 +1,45 @@
+# config.yml
+items:
+  homestone:
+    material: GOLD_INGOT
+    display-name: "&6Homestone"
+    lore:
+      - "&7Right-click to teleport home."
+      - "&cConsumed on use."
+    # Commands to run. Use %player% for the player's name if needed.
+    commands:
+      - "lp user %player% permission settemp essentials.home true 5s"
+      - "sudo %player% home"
+      - "testing player: %player%"
+    consume-on-use: true
+    model-data: 1
+  spawnstone:
+    material: GOLD_INGOT
+    display-name: "&6Spawnstone"
+    lore:
+      - "&7Right-click to teleport to spawn."
+      - "&cConsumed on use."
+    commands:
+      - "spawn %player%"
+    consume-on-use: true
+    model-data: 2
+  daystone:
+    material: GOLD_INGOT
+    display-name: "&6Daystone"
+    lore:
+      - "&7Right-click to set time to morning."
+      - "&cConsumed on use."
+    commands:
+      - "time set morning"
+    consume-on-use: true
+    model-data: 3
+  flightstone:
+    material: GOLD_INGOT
+    display-name: "&6Flightstone"
+    lore:
+      - "&7Right-click to allow flight (infinite for now)."
+      - "&cConsumed on use."
+    commands:
+      - "fly %player%"
+    consume-on-use: true
+    model-data: 4

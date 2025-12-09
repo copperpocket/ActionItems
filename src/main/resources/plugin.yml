@@ -1,0 +1,11 @@
+# plugin.yml
+main: com.copperpocket.actionitems.ActionItems # <-- MUST MATCH YOUR PACKAGE AND CLASS NAME
+name: ActionItems
+version: 1.0
+api-version: 1.21 # Adjust this to your server's version (e.g., 1.19, 1.20)
+author: Michael Mulek
+commands:
+  actionitem:
+    description: Manages the Action Items
+    usage: /actionitem <give>
+    permission: actionitems.admin

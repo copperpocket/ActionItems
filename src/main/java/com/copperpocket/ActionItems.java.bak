@@ -1,0 +1,128 @@
+package com.copperpocket.actionitems; // FIX 1: Corrected Package
+
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class ActionItems extends JavaPlugin implements Listener, CommandExecutor {
+
+    private NamespacedKey itemKey;
+
+    @Override
+    public void onEnable() {
+        // Create a unique key to identify valid items
+        this.itemKey = new NamespacedKey(this, "action_item_id");
+
+        saveDefaultConfig();
+        getServer().getPluginManager().registerEvents(this, this);
+        getCommand("actionitem").setExecutor(this);
+    }
+
+    // Command to give the item: /actionitem give <player> <configKey>
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length < 3 || !args[0].equalsIgnoreCase("give")) {
+            sender.sendMessage(ChatColor.RED + "Usage: /actionitem give <player> <itemId>");
+            return true;
+        }
+
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            sender.sendMessage(ChatColor.RED + "Player not found.");
+            return true;
+        }
+
+        String itemId = args[2].toLowerCase();
+        if (!getConfig().contains("items." + itemId)) {
+            sender.sendMessage(ChatColor.RED + "Item ID '" + itemId + "' not found in config.");
+            return true;
+        }
+
+        target.getInventory().addItem(createActionItem(itemId));
+        sender.sendMessage(ChatColor.GREEN + "Gave " + itemId + " to " + target.getName());
+        return true;
+    }
+
+    // Helper to build the item with the secret NBT tag
+    private ItemStack createActionItem(String configId) {
+        ConfigurationSection section = getConfig().getConfigurationSection("items." + configId);
+        Material mat = Material.getMaterial(section.getString("material", "STONE"));
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+
+        // Visuals
+        meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', section.getString("display-name")));
+        List<String> lore = new ArrayList<>();
+        for (String line : section.getStringList("lore")) {
+            lore.add(ChatColor.translateAlternateColorCodes('&', line));
+        }
+        meta.setLore(lore);
+
+        // Get the CMD value from the config, defaulting to 0 if not found.
+        int customModelData = section.getInt("model-data", 0);
+
+        // Apply the CMD if it is greater than 0
+        if (customModelData > 0) {
+            meta.setCustomModelData(customModelData);
+        }
+
+        // THE IMPORTANT PART: Store the config ID inside the item permanently
+        meta.getPersistentDataContainer().set(itemKey, PersistentDataType.STRING, configId);
+
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    // FIX 2: Removed @Override and renamed for clarity
+    @EventHandler
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        // Only run on Right Click (Air or Block)
+        if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+
+        Player player = event.getPlayer();
+        ItemStack item = player.getInventory().getItemInMainHand();
+
+        if (item == null || item.getType() == Material.AIR || item.getItemMeta() == null) return;
+
+        // Check if the item has our secret tag
+        if (!item.getItemMeta().getPersistentDataContainer().has(itemKey, PersistentDataType.STRING)) return;
+
+        // Get the ID (e.g., "homestone")
+        String itemId = item.getItemMeta().getPersistentDataContainer().get(itemKey, PersistentDataType.STRING);
+        ConfigurationSection section = getConfig().getConfigurationSection("items." + itemId);
+
+        if (section == null) return;
+
+        event.setCancelled(true); // Prevent placing the block if it's a block
+
+        // 1. Run Commands
+        List<String> commands = section.getStringList("commands");
+        for (String cmd : commands) {
+            // Replace placeholder and run command as the player
+            String finalCmd = cmd.replace("%player%", player.getName());
+            player.performCommand(finalCmd);
+        }
+
+        // 2. Consume Item
+        if (section.getBoolean("consume-on-use")) {
+            item.setAmount(item.getAmount() - 1);
+        }
+    }
+}
