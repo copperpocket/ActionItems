@@ -27,7 +27,8 @@ import java.util.UUID;
 public class ActionItems extends JavaPlugin implements Listener, CommandExecutor {
 
     private NamespacedKey itemKey;
-    private final Map<UUID, Long> cooldowns = new HashMap<>();
+    // FIX: Changed map definition from Map<UUID, Long> to the nested map structure
+    private final Map<UUID, Map<String, Long>> cooldowns = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -96,26 +97,13 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
 
     @EventHandler
     public void onPlayerInteract(PlayerInteractEvent event) {
-        // Only run on Right Click (Air or Block)
         if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
 
         Player player = event.getPlayer();
         ItemStack item = player.getInventory().getItemInMainHand();
 
         if (item == null || item.getType() == Material.AIR || item.getItemMeta() == null) return;
-
-        // Check if the item has our secret tag
         if (!item.getItemMeta().getPersistentDataContainer().has(itemKey, PersistentDataType.STRING)) return;
-
-        // --- COOLDOWN CHECK START ---
-        long now = System.currentTimeMillis();
-        long cooldownTime = 10000; // 10000 milliseconds = 10 second
-
-        if (cooldowns.containsKey(player.getUniqueId()) && cooldowns.get(player.getUniqueId()) > now) {
-            // Player is still on cooldown, ignore the event.
-            return;
-        }
-        // --- COOLDOWN CHECK END ---
 
         // Get the ID (e.g., "homestone")
         String itemId = item.getItemMeta().getPersistentDataContainer().get(itemKey, PersistentDataType.STRING);
@@ -123,16 +111,49 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
 
         if (section == null) return;
 
+        // Get cooldown time in seconds from config, convert to milliseconds
+        long cooldownTime = section.getInt("cooldown", 0) * 1000L;
+        long now = System.currentTimeMillis();
+
+        // --- COOLDOWN CHECK START: NOW ITEM-SPECIFIC ---
+        if (cooldownTime > 0) {
+
+            // 1. Get the player's specific item cooldown map, or null if they haven't used anything yet
+            Map<String, Long> playerCooldowns = cooldowns.get(player.getUniqueId());
+
+            if (playerCooldowns != null && playerCooldowns.containsKey(itemId) && playerCooldowns.get(itemId) > now) {
+
+                // Calculate and send cooldown message
+                long timeLeftMillis = playerCooldowns.get(itemId) - now;
+                double timeLeftSeconds = (double) timeLeftMillis / 1000.0;
+                String formattedTime = String.format("%.1f", timeLeftSeconds);
+
+                player.sendMessage(ChatColor.RED + "You must wait " + ChatColor.YELLOW + formattedTime + ChatColor.RED + " seconds before using this item again.");
+
+                // Player is still on cooldown for THIS item, ignore the event.
+                return;
+            }
+        }
+        // --- COOLDOWN CHECK END ---
+
         event.setCancelled(true); // Prevent placing the block if it's a block
 
         // 1. Run Commands
         List<String> commands = section.getStringList("commands");
-        for (String cmd : commands) {
-            // Replace placeholder
+        for (int i = 0; i < commands.size(); i++) {
+            String cmd = commands.get(i);
             String finalCmd = cmd.replace("%player%", player.getName());
 
-            // Executes the command as the CONSOLE/SERVER
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCmd);
+            // Check if this is the command that requires the permission (the second command, index 1)
+            if (i == 1 && finalCmd.startsWith("sudo")) {
+                // If it is the SUDO command, schedule it to run in 1 tick (50ms)
+                Bukkit.getScheduler().runTaskLater(this, () -> {
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCmd);
+                }, 3L); // 1L is 1 tick
+            } else {
+                // For all other commands (like LP commands), run them immediately
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCmd);
+            }
         }
 
         // 2. Consume Item
@@ -140,9 +161,14 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
             item.setAmount(item.getAmount() - 1);
         }
 
-        // --- COOLDOWN SET ---
-        // Set the new cooldown time (current time + cooldown period)
-        cooldowns.put(player.getUniqueId(), now + cooldownTime);
+        // --- COOLDOWN SET: NOW ITEM-SPECIFIC ---
+        if (cooldownTime > 0) {
+            // Ensure the outer map (player map) exists
+            cooldowns.putIfAbsent(player.getUniqueId(), new HashMap<>());
+
+            // Put the new expiration time into the player's inner item map
+            cooldowns.get(player.getUniqueId()).put(itemId, now + cooldownTime);
+        }
         // --- END COOLDOWN SET ---
     }
 }

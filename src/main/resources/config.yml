@@ -13,6 +13,7 @@ items:
       - "testing player: %player%"
     consume-on-use: true
     model-data: 1
+    cooldown: 10
   spawnstone:
     material: GOLD_INGOT
     display-name: "&6Spawnstone"
@@ -23,6 +24,7 @@ items:
       - "spawn %player%"
     consume-on-use: true
     model-data: 2
+    cooldown: 10
   daystone:
     material: GOLD_INGOT
     display-name: "&6Daystone"
@@ -33,6 +35,7 @@ items:
       - "time set morning"
     consume-on-use: true
     model-data: 3
+    cooldown: 10
   flightstone:
     material: GOLD_INGOT
     display-name: "&6Flightstone"
@@ -43,3 +46,4 @@ items:
       - "fly %player%"
     consume-on-use: true
     model-data: 4
+    cooldown: 10
