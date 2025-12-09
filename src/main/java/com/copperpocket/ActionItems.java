@@ -20,10 +20,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class ActionItems extends JavaPlugin implements Listener, CommandExecutor {
 
     private NamespacedKey itemKey;
+    private final Map<UUID, Long> cooldowns = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -103,6 +107,16 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
         // Check if the item has our secret tag
         if (!item.getItemMeta().getPersistentDataContainer().has(itemKey, PersistentDataType.STRING)) return;
 
+        // --- COOLDOWN CHECK START ---
+        long now = System.currentTimeMillis();
+        long cooldownTime = 10000; // 10000 milliseconds = 10 second
+
+        if (cooldowns.containsKey(player.getUniqueId()) && cooldowns.get(player.getUniqueId()) > now) {
+            // Player is still on cooldown, ignore the event.
+            return;
+        }
+        // --- COOLDOWN CHECK END ---
+
         // Get the ID (e.g., "homestone")
         String itemId = item.getItemMeta().getPersistentDataContainer().get(itemKey, PersistentDataType.STRING);
         ConfigurationSection section = getConfig().getConfigurationSection("items." + itemId);
@@ -117,15 +131,18 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
             // Replace placeholder
             String finalCmd = cmd.replace("%player%", player.getName());
 
-            // --- THE PERMISSION FIX ---
-            // Executes the command as the CONSOLE/SERVER, bypassing player permission checks.
+            // Executes the command as the CONSOLE/SERVER
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCmd);
-            // --- END PERMISSION FIX ---
         }
 
         // 2. Consume Item
         if (section.getBoolean("consume-on-use")) {
             item.setAmount(item.getAmount() - 1);
         }
+
+        // --- COOLDOWN SET ---
+        // Set the new cooldown time (current time + cooldown period)
+        cooldowns.put(player.getUniqueId(), now + cooldownTime);
+        // --- END COOLDOWN SET ---
     }
 }
