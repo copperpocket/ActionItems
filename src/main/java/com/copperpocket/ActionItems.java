@@ -69,7 +69,7 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
     // Helper to build the item with the secret NBT tag
     private ItemStack createActionItem(String configId) {
         ConfigurationSection section = getConfig().getConfigurationSection("items." + configId);
-        Material mat = Material.getMaterial(section.getString("material", "STONE"));
+        Material mat = Material.getMaterial(section.getString("material", "GOLD_INGOT"));
         ItemStack item = new ItemStack(mat);
         ItemMeta meta = item.getItemMeta();
 
