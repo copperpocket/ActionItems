@@ -40,10 +40,11 @@ items:
     material: GOLD_INGOT
     display-name: "&6Flightstone"
     lore:
-      - "&7Right-click to allow flight (infinite for now)."
+      - "&7Right-click to allow flight for 2 minutes."
       - "&cConsumed on use."
     commands:
       - "fly %player%"
     consume-on-use: true
     model-data: 4
-    cooldown: 10
+    cooldown: 60
+    flight-duration: 240
