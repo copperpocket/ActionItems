@@ -28,8 +28,14 @@ import java.util.UUID;
 public class ActionItems extends JavaPlugin implements Listener, CommandExecutor {
 
     private NamespacedKey itemKey;
-    // FIX: Changed map definition from Map<UUID, Long> to the nested map structure
+    // Changed map definition from Map<UUID, Long> to the nested map structure
     private final Map<UUID, Map<String, Long>> cooldowns = new HashMap<>();
+
+    // Track the ID of the task that will disable flight
+    private final Map<UUID, Integer> flightDisableTaskIds = new HashMap<>();
+
+    // Track the running BukkitRunnable for the countdown
+    private final Map<UUID, BukkitRunnable> countdownTaskRunnables = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -157,30 +163,64 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
             final Player flightPlayer = player;
 
             if (durationSeconds > 0) {
+                // --- CANCELLATION LOGIC START ---
+                // 1. Cancel existing countdown runnable
+                BukkitRunnable oldCountdown = countdownTaskRunnables.remove(player.getUniqueId());
+                if (oldCountdown != null) {
+                    oldCountdown.cancel();
+                }
+                // 2. Cancel existing flight disable task
+                Integer oldDisableTaskId = flightDisableTaskIds.remove(player.getUniqueId());
+                if (oldDisableTaskId != null) {
+                    Bukkit.getScheduler().cancelTask(oldDisableTaskId);
+                }
+                // --- CANCELLATION LOGIC END ---
+
                 // Convert seconds to server ticks (20 ticks = 1 second)
                 long durationTicks = durationSeconds * 20L;
-                long warn10Ticks = durationTicks - (10 * 20L);
 
                 // --- ENABLE FLIGHT ---
                 player.setAllowFlight(true);
                 player.setFlying(true);
                 player.sendMessage(ChatColor.GREEN + "Flight enabled for " + ChatColor.YELLOW + durationSeconds + ChatColor.GREEN + " seconds!");
 
-                // --- 10-SECOND WARNING ---
+                // =======================================================
+                // --- WARNING LOGIC START ---
+                // =======================================================
+
+                // A. 50% DURATION WARNING
+                // Schedule warning at 50% remaining time (e.g., 2 minutes for a 4-minute flight)
+                long fiftyPercentTicks = durationTicks / 2;
+                if (fiftyPercentTicks > 0) {
+                    Bukkit.getScheduler().runTaskLater(this, () -> {
+                        flightPlayer.sendMessage(ChatColor.YELLOW + "Flight ends in " + ChatColor.GOLD + durationSeconds / 2
+                                + ChatColor.YELLOW + " seconds.");
+                    }, fiftyPercentTicks);
+                }
+
+                // B. 30-SECOND DURATION WARNING
+                long warn30Ticks = durationTicks - (30 * 20L);
+                if (warn30Ticks > 0) {
+                    Bukkit.getScheduler().runTaskLater(this, () -> {
+                        flightPlayer.sendMessage(ChatColor.YELLOW + "Flight ends in" + ChatColor.GOLD + " 30 " + ChatColor.YELLOW + "seconds.");
+                    }, warn30Ticks);
+                }
+
+                // C. 10-SECOND DURATION WARNING
                 // Schedule the task only if duration is longer than 10 seconds
+                long warn10Ticks = durationTicks - (10 * 20L);
                 if (warn10Ticks > 0) {
                     Bukkit.getScheduler().runTaskLater(this, () -> {
-                        flightPlayer.sendMessage(ChatColor.YELLOW + "Your Flightstone effect is ending in 10 seconds!");
+                        flightPlayer.sendMessage(ChatColor.RED + "" + ChatColor.BOLD + "WARNING! "
+                                + ChatColor.YELLOW + "Flight ends in" + ChatColor.GOLD +  " 10 " + ChatColor.YELLOW + "seconds. Get safe or use another Flightstone.");
                     }, warn10Ticks);
                 }
 
-                // --- 5-SECOND COUNTDOWN WARNING ---
-                // We use a separate Runnable/Task ID for the countdown to make it repeating.
+                // D. 5-SECOND COUNTDOWN WARNING
                 long countdownStartTicks = durationTicks - (5 * 20L);
-
                 if (countdownStartTicks > 0) {
                     // Start a repeating task 5 seconds before the end
-                    new BukkitRunnable() {
+                    BukkitRunnable newCountdown = new BukkitRunnable() {
                         int count = 5;
 
                         @Override
@@ -191,20 +231,30 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
                             } else {
                                 // Stop the repeating task when it reaches 0
                                 this.cancel();
+                                // Clean up the map after cancellation is complete
+                                countdownTaskRunnables.remove(flightPlayer.getUniqueId());
                             }
                         }
-                    }.runTaskTimer(this, countdownStartTicks, 20L); // Starts at countdownStartTicks, repeats every 20 ticks (1 second)
+                    };
+                    newCountdown.runTaskTimer(this, countdownStartTicks, 20L);
+                    // Store the new runnable
+                    countdownTaskRunnables.put(player.getUniqueId(), newCountdown);
                 }
 
                 // --- SCHEDULE FLIGHT DISABLE ---
-                Bukkit.getScheduler().runTaskLater(this, () -> {
+                int newDisableTaskId = Bukkit.getScheduler().runTaskLater(this, () -> {
                     // Only disable if the player is still flying and isn't in Creative/Spectator
                     if (player.getGameMode().name().equals("SURVIVAL") || player.getGameMode().name().equals("ADVENTURE")) {
                         player.setFlying(false);
                         player.setAllowFlight(false);
                         player.sendMessage(ChatColor.RED + "Your Flightstone effect has worn off.");
                     }
-                }, durationTicks);
+                    // Clean up the map after the task executes
+                    flightDisableTaskIds.remove(flightPlayer.getUniqueId());
+                }, durationTicks).getTaskId();
+
+                // Store the Task ID
+                flightDisableTaskIds.put(player.getUniqueId(), newDisableTaskId);
             }
         }
 
@@ -273,14 +323,17 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
         // 3. Check specific non-standard "Singleton" blocks, grouped for readability.
         return switch (type) {
             // --- Containers / Storage ---
-            case BARREL, FURNACE, SMOKER, BLAST_FURNACE, HOPPER, DISPENSER, DROPPER -> true;
+            case BARREL, FURNACE, SMOKER, BLAST_FURNACE, HOPPER, DISPENSER, DROPPER ->
+                    true;
 
             // --- Utility / Crafting Stations ---
             case ANVIL, BREWING_STAND, ENCHANTING_TABLE, CAULDRON, CRAFTING_TABLE,
-                 CARTOGRAPHY_TABLE, LECTERN, GRINDSTONE, STONECUTTER, LOOM -> true;
+                 CARTOGRAPHY_TABLE, LECTERN, GRINDSTONE, STONECUTTER, LOOM ->
+                    true;
 
             // --- Special Devices / Redstone Components ---
-            case BEACON, NOTE_BLOCK, JUKEBOX, REPEATER, COMPARATOR, DAYLIGHT_DETECTOR -> true;
+            case BEACON, NOTE_BLOCK, JUKEBOX, REPEATER, COMPARATOR, DAYLIGHT_DETECTOR ->
+                    true;
 
             default -> false;
         };
