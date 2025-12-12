@@ -100,6 +100,14 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
 
+        // If the player right-clicked a BLOCK AND that block is interactable,
+        // we stop the ActionItem logic to allow the block interaction (e.g., opening a door) to happen.
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+            if (isInteractableBlock(event.getClickedBlock().getType())) {
+                return; // Exit and let the block interaction process naturally
+            }
+        }
+
         Player player = event.getPlayer();
         ItemStack item = player.getInventory().getItemInMainHand();
 
@@ -238,4 +246,44 @@ public class ActionItems extends JavaPlugin implements Listener, CommandExecutor
         }
         // --- END COOLDOWN SET ---
     }
+
+    // Helper to determine if a block is a common interactable item
+    private boolean isInteractableBlock(Material type) {
+        // 1. Check built-in Spigot method (handles most blocks like GUI-containers)
+        if (type.isInteractable()) {
+            return true;
+        }
+
+        String name = type.name();
+
+        // 2. Check for common block types using efficient string matching.
+        // These are "Families" of blocks that have many variations (Colors, Wood types).
+        if (name.contains("DOOR") ||
+                name.contains("GATE") ||
+                name.contains("TRAPDOOR") ||
+                name.contains("CHEST") ||       // Covers Chest, Ender Chest, Tra pped Chest
+                name.contains("SHULKER_BOX") || // Covers all 16 colors of Shulker Boxes
+                name.contains("BUTTON") ||      // Covers all Wood and Stone buttons
+                name.contains("LEVER") ||       // Common mechanical interaction
+                name.contains("BED") ||         // Covers all colored beds
+                name.contains("SIGN")) {        // Covers all wood signs
+            return true;
+        }
+
+        // 3. Check specific non-standard "Singleton" blocks, grouped for readability.
+        return switch (type) {
+            // --- Containers / Storage ---
+            case BARREL, FURNACE, SMOKER, BLAST_FURNACE, HOPPER, DISPENSER, DROPPER -> true;
+
+            // --- Utility / Crafting Stations ---
+            case ANVIL, BREWING_STAND, ENCHANTING_TABLE, CAULDRON, CRAFTING_TABLE,
+                 CARTOGRAPHY_TABLE, LECTERN, GRINDSTONE, STONECUTTER, LOOM -> true;
+
+            // --- Special Devices / Redstone Components ---
+            case BEACON, NOTE_BLOCK, JUKEBOX, REPEATER, COMPARATOR, DAYLIGHT_DETECTOR -> true;
+
+            default -> false;
+        };
+    }
 }
+
